@@ -21,7 +21,7 @@ typedef uLong State;
 typedef shared_ptr<Node> NodePtr;
 typedef function<int(const State& s)> Heuristic;
 int inversion = 0;
-static int _size = 8;       //单色将牌的个数
+static int _size = 7;       //单色将牌的个数
  
 int Inversion(const State& s);
 void animate(std::vector<uLong>& path);
@@ -123,6 +123,7 @@ struct NodeCompare : public binary_function<NodePtr, NodePtr, bool> {
 void ConstructPath(NodePtr node, vector<State>* path) {//将路径存到path里面
     while (node) {
         path->push_back(node->s);
+        //cout << "\tf:" << node->f << " g:" << node->g << endl;
         node = node->p;
     }
     reverse(path->begin(), path->end());//所有方法都统一逆序输入至此，需要反转一下。
@@ -147,6 +148,8 @@ public:
         int o_max = 0;
         q.emplace(new Node(start, getZero(start), nullptr, heuristic_(start)));
         int all_nodes = 1;
+
+        int repeat = 0;
         while (!q.empty()) {
             auto cur = q.top();
             q.pop();
@@ -158,26 +161,21 @@ public:
                     cout << "\tgn:" << cur->g << endl;
                     cout << "\topen max size:" << o_max << endl;
                     cout << "\tall nodes:" << all_nodes << endl;
-                    /*cout << "\ttarget:";
-                    byte* bs = getValues(targets[i]);
-                    for (int i = 0; i < 2 * _size + 1; i++)
-                    {
-                        cout << (int)bs[i];
-                    }
-                    cout << endl;
-                    free(bs);*/
+                    cout << "\treapeat:" << repeat << endl;
 
                     ConstructPath(cur, path);
                     *opened = o.size();
                     *closed = c.size();
-                    return targets[i];
+                    return cur->g;
                 }
             }
+
 
             if (!c.insert(cur->s).second) continue;
             for (const auto& n : cur->GetNextNodes()) {
                 auto it = o.find(n->s);
                 if (it != o.end() && n->f >= it->second->f) continue;
+                
                 o[n->s] = n;
                 q.push(n);
                 if (o_max < o.size()) o_max = o.size();
@@ -210,19 +208,10 @@ public:
                     cout << "\tgn:" << cur->g << endl;
                     cout << "\topen max size:" << o_max << endl;
                     cout << "\tall nodes:" << all_nodes << endl;
-                    /*cout << "\ttarget:";
-                    byte* bs = getValues(targets[i]);
-                    for (int i = 0; i < 2 * _size + 1; i++)
-                    {
-                        cout << (int)bs[i];
-                    }
-                    cout << endl;
-                    free(bs);*/
-
                     ConstructPath(cur, path);
                     *opened = o.size();
                     *closed = c.size();
-                    return targets[i];
+                    return cur->g;
                 }
             }
 
@@ -269,7 +258,7 @@ void main()
     cout << "\ttime span:" << time_span.count()*1000;
     //animate(path);
 
-    /*cout << endl << "dijkstra:" << endl;
+    cout << endl << "dijkstra:" << endl;
     path.clear();
     t0 = high_resolution_clock::now();
     dij.Solve(s, 0, &path, &opened, &closed);
@@ -277,7 +266,7 @@ void main()
     time_span = chrono::duration_cast<chrono::duration<double>>(t1 - t0);
 
     cout << "\tpath size:" << path.size() << endl;
-    cout << "\ttime span:" << time_span.count() * 1000 << endl;*/
+    cout << "\ttime span:" << time_span.count() * 1000 << endl;
     
 
     free(s_byte); s_byte = NULL;
@@ -429,32 +418,3 @@ vector<string> getStateStr(vector<State> min_path)
     }
     return vs;
 }
-
-void minPath(uLong s, Solver& solver)
-{
-    int min_size = INT_MAX;
-    vector<State> min_path, path;
-    int opened;
-    int closed;
-
-    for (auto& t : targets)
-    {
-        solver.Solve(s, t, &path, &opened, &closed);
-
-        //cout << path.size() << endl;
-        if (min_size > path.size())
-        {
-            min_size = path.size();
-            min_path = path;
-        }
-        path.clear();
-    }
-    cout << "path size:" << min_path.size() << endl;
-    getStateStr(min_path);
-}
-
-//void SetColor(unsigned short forecolor = 4, unsigned short backgroudcolor = 0)
-//{
-//    HANDLE hCon = GetStdHandle(STD_OUTPUT_HANDLE); //获取缓冲区句柄
-//    SetConsoleTextAttribute(hCon, forecolor | backgroudcolor); //设置文本及背景色
-//}
