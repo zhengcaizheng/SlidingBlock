@@ -4,6 +4,7 @@
 #include<iostream>
 #include<string>
 #include<set>
+#include<list>
 #include<unordered_map>
 #include<unordered_set>
 #include<vector>
@@ -21,20 +22,20 @@ typedef uLong State;
 typedef shared_ptr<Node> NodePtr;
 typedef function<int(const State& s)> Heuristic;
 int inversion = 0;
-static int _size = 7;       //单色将牌的个数
- 
+static int _size = 8;       //单色将牌的个数
+
 int Inversion(const State& s);
 void animate(std::vector<uLong>& path);
 vector<uLong> genTargets();
 byte* getStart();
 vector<string> getStateStr(vector<State> min_path);
-void printState(vector<State> min_path);
 vector<uLong> targets;
+string getStringOfState(State);
 
 struct Node {
 
     Node(State s, int blankPos, NodePtr p = nullptr, int h = 0)
-        : s(s),blankPos(blankPos), p(p), h(h)
+        : s(s), blankPos(blankPos), p(p), h(h)
     {
         if (!p)
         {
@@ -47,6 +48,8 @@ struct Node {
             this->g = p->g + span;
         }
         f = this->h + g;
+        //显示字符串版的State,便于查看
+        //str_s = getStringOfState(s);
     }
 
     vector<NodePtr> GetNextNodes() const {
@@ -63,7 +66,7 @@ struct Node {
             if (blankPos + i < 0 || blankPos + i > 2 * _size || !i)
                 continue;
             nextstate = moveTile(this->s, blankPos, blankPos + i);
-            
+
             if (h) //如果h==0,那么算法不是astar 或 astar的target已找到
             {
                 newH = this->h;
@@ -94,7 +97,7 @@ struct Node {
                 default: break;
                 }
             }
-            
+
             auto n = make_shared<Node>(nextstate, this->blankPos + i, make_shared<Node>(*this), newH);
             nodes.push_back(n);
         }
@@ -106,6 +109,7 @@ struct Node {
         return setValue(state, blankPos, tile);    //将tile放至blankPos处，然后返回
     }
 
+    //string str_s;
     State s;
     int h;
     int f;
@@ -135,7 +139,6 @@ public:
         int* opened, int* closed) = 0;
 };
 
-
 class AStarSolver : public Solver {
 public:
     explicit AStarSolver(Heuristic heuristic) : heuristic_(heuristic) {}//返回一段距离
@@ -144,12 +147,11 @@ public:
         unordered_map<State, NodePtr> o;
         unordered_set<State> c;
         priority_queue<NodePtr, vector<NodePtr>, NodeCompare> q;
-        
+
         int o_max = 0;
         q.emplace(new Node(start, getZero(start), nullptr, heuristic_(start)));
         int all_nodes = 1;
 
-        int repeat = 0;
         while (!q.empty()) {
             auto cur = q.top();
             q.pop();
@@ -161,7 +163,6 @@ public:
                     cout << "\tgn:" << cur->g << endl;
                     cout << "\topen max size:" << o_max << endl;
                     cout << "\tall nodes:" << all_nodes << endl;
-                    cout << "\treapeat:" << repeat << endl;
 
                     ConstructPath(cur, path);
                     *opened = o.size();
@@ -175,7 +176,7 @@ public:
             for (const auto& n : cur->GetNextNodes()) {
                 auto it = o.find(n->s);
                 if (it != o.end() && n->f >= it->second->f) continue;
-                
+
                 o[n->s] = n;
                 q.push(n);
                 if (o_max < o.size()) o_max = o.size();
@@ -188,6 +189,69 @@ private:
     Heuristic heuristic_;
 };
 
+class FringeSolver : public Solver {
+public:
+    explicit FringeSolver(Heuristic heuristic) : heuristic_(heuristic) {}//返回一段距离
+    uLong Solve(State start, State target, vector<State>* path, int* opened,
+        int* closed) override {
+        unordered_map<State, NodePtr> c;
+        list<NodePtr> F;
+        //unordered_set<State> c;
+        //priority_queue<NodePtr, vector<NodePtr>, NodeCompare> q;
+
+        int fmin, flimit = heuristic_(start);
+        list<NodePtr>::iterator iter_tmp = F.begin();
+        NodePtr startNode = make_shared<Node>(start, getZero(start), nullptr, flimit);
+        F.push_back(startNode);
+        c[start] = startNode;
+
+        while (!F.empty()) {
+            fmin = INT_MAX;
+
+            //for (auto& n : F)
+            for (list<NodePtr>::iterator iter_n = F.begin(); iter_n != F.end(); )
+            {
+                NodePtr n = *iter_n;
+                if (n->f > flimit)
+                {
+                    fmin = n->f < fmin ? n->f : fmin;
+                    iter_n++;
+                    continue;
+                }
+                for (int i = 0; i < 2 * _size + 1; i++)
+                    if (n->s == targets[i])
+                    {
+                        ConstructPath(n, path);
+                        cout << "\tgn:" << n->g << endl;
+                        return n->g;
+                    }
+                for (const auto& child : n->GetNextNodes())
+                {
+                    if (c.count(child->s))
+                        if (child->g >= c[child->s]->g)
+                            continue;
+
+                    iter_tmp = find(F.begin(), F.end(), child);
+                    if (iter_tmp != F.end())
+                        F.erase(iter_tmp);
+                    F.insert(++iter_n, child);
+                    --iter_n;
+                    --iter_n;
+                    c[child->s] = child;
+                }
+                iter_tmp = iter_n++;
+                F.erase(iter_tmp);
+            }
+            flimit = fmin;
+        }
+        return 0;
+    }
+
+
+private:
+    Heuristic heuristic_;
+};
+
 class DijkstraSolver : public Solver {
 public:
     uLong Solve(State start, State target, vector<State>* path, int* opened,
@@ -195,7 +259,7 @@ public:
         unordered_map<State, NodePtr> o;
         unordered_set<State> c;
         priority_queue<NodePtr, vector<NodePtr>, NodeCompare> q;
-        
+
         int o_max = 0;
         q.emplace(new Node(start, getZero(start), nullptr));
         int all_nodes = 1;
@@ -236,6 +300,7 @@ void main()
 
     targets = genTargets();
     AStarSolver astar(Inversion);
+    FringeSolver fringe(Inversion);
     DijkstraSolver dij;
     byte* s_byte = getStart();
     //打乱初始state
@@ -248,14 +313,13 @@ void main()
 
     uLong s = getBitRep(s_byte, 2 * _size + 1);
 
-    cout << "astar:" << endl;
+    cout << "fringe:" << endl;
     auto t0 = high_resolution_clock::now();
-    astar.Solve(s, 0, &path, &opened, &closed);
+    fringe.Solve(s, 0, &path, &opened, &closed);
     auto t1 = high_resolution_clock::now();
     auto time_span = chrono::duration_cast<chrono::duration<double>>(t1 - t0);
-    
     cout << "\tpath size:" << path.size() << endl;
-    cout << "\ttime span:" << time_span.count()*1000;
+    cout << "\ttime span:" << time_span.count() * 1000;
     //animate(path);
 
     cout << endl << "dijkstra:" << endl;
@@ -264,10 +328,17 @@ void main()
     dij.Solve(s, 0, &path, &opened, &closed);
     t1 = high_resolution_clock::now();
     time_span = chrono::duration_cast<chrono::duration<double>>(t1 - t0);
-
     cout << "\tpath size:" << path.size() << endl;
     cout << "\ttime span:" << time_span.count() * 1000 << endl;
     
+    cout <<endl << "astar:" << endl;
+    path.clear();
+    t0 = high_resolution_clock::now();
+    astar.Solve(s, 0, &path, &opened, &closed);
+    t1 = high_resolution_clock::now();
+    time_span = chrono::duration_cast<chrono::duration<double>>(t1 - t0);
+    cout << "\tpath size:" << path.size() << endl;
+    cout << "\ttime span:" << time_span.count() * 1000 << endl;
 
     free(s_byte); s_byte = NULL;
 }
@@ -417,4 +488,17 @@ vector<string> getStateStr(vector<State> min_path)
         vs.push_back(s);
     }
     return vs;
+}
+
+
+string getStringOfState(State s)
+{
+    byte* s_byte = getValues(s);
+    string str = "";
+    for (int i = 0; i < 2 * _size + 1; i++)
+    {
+        str += (int)s_byte[i] + 48;
+    }
+    free(s_byte);
+    return str;
 }
