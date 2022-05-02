@@ -22,7 +22,7 @@ typedef uLong State;
 typedef shared_ptr<Node> NodePtr;
 typedef function<int(const State& s)> Heuristic;
 int inversion = 0;
-static int _size = 8;       //单色将牌的个数
+static int _size = 9;       //单色将牌的个数
 
 int Inversion(const State& s);
 void animate(std::vector<uLong>& path);
@@ -135,14 +135,14 @@ void ConstructPath(NodePtr node, vector<State>* path) {//将路径存到path里面
 
 class Solver {
 public:
-    virtual uLong Solve(State start, State target, vector<State>* path,
+    virtual uLong Solve(State start, vector<State>* path,
         int* opened, int* closed) = 0;
 };
 
 class AStarSolver : public Solver {
 public:
     explicit AStarSolver(Heuristic heuristic) : heuristic_(heuristic) {}//返回一段距离
-    uLong Solve(State start, State target, vector<State>* path, int* opened,
+    uLong Solve(State start, vector<State>* path, int* opened,
         int* closed) override {
         unordered_map<State, NodePtr> o;
         unordered_set<State> c;
@@ -175,6 +175,7 @@ public:
             if (!c.insert(cur->s).second) continue;
             for (const auto& n : cur->GetNextNodes()) {
                 auto it = o.find(n->s);
+                if (c.count(n->s)) continue;
                 if (it != o.end() && n->f >= it->second->f) continue;
 
                 o[n->s] = n;
@@ -188,27 +189,23 @@ public:
 private:
     Heuristic heuristic_;
 };
-
 class FringeSolver : public Solver {
 public:
     explicit FringeSolver(Heuristic heuristic) : heuristic_(heuristic) {}//返回一段距离
-    uLong Solve(State start, State target, vector<State>* path, int* opened,
+    uLong Solve(State start, vector<State>* path, int* opened,
         int* closed) override {
         unordered_map<State, NodePtr> c;
         list<NodePtr> F;
-        //unordered_set<State> c;
-        //priority_queue<NodePtr, vector<NodePtr>, NodeCompare> q;
 
         int fmin, flimit = heuristic_(start);
-        list<NodePtr>::iterator iter_tmp = F.begin();
         NodePtr startNode = make_shared<Node>(start, getZero(start), nullptr, flimit);
         F.push_back(startNode);
         c[start] = startNode;
 
+        list<NodePtr>::iterator iter_tmp = F.begin();
         while (!F.empty()) {
             fmin = INT_MAX;
 
-            //for (auto& n : F)
             for (list<NodePtr>::iterator iter_n = F.begin(); iter_n != F.end(); )
             {
                 NodePtr n = *iter_n;
@@ -235,8 +232,7 @@ public:
                     if (iter_tmp != F.end())
                         F.erase(iter_tmp);
                     F.insert(++iter_n, child);
-                    --iter_n;
-                    --iter_n;
+                    ----iter_n;
                     c[child->s] = child;
                 }
                 iter_tmp = iter_n++;
@@ -252,9 +248,72 @@ private:
     Heuristic heuristic_;
 };
 
+
+class FringeSolver2 : public Solver {
+public:
+    explicit FringeSolver2(Heuristic heuristic) : heuristic_(heuristic) {}//返回一段距离
+    uLong Solve(State start, vector<State>* path, int* opened,
+        int* closed) override {
+        unordered_map<State, NodePtr> C;
+        vector<NodePtr> nodesV[2];
+        bool isNow = 0;
+
+        NodePtr getCha = nullptr;
+        int fmin, flimit = heuristic_(start);
+        NodePtr startNode = make_shared<Node>(start, getZero(start), nullptr, flimit);
+        nodesV[isNow].push_back(startNode);
+        C[start] = startNode;
+
+        while (!nodesV[isNow].empty()) {
+            fmin = INT_MAX;
+
+            for (auto& n : nodesV[isNow])
+                if (getCha = iterDeepen(n, nodesV[!isNow], flimit, fmin, C))
+                {
+                    ConstructPath(getCha, path);
+                    cout << "\tgn:" << getCha->g << endl;
+                    return getCha->g;
+                }
+
+            nodesV[isNow].clear();
+            isNow = !isNow;
+            flimit = fmin;
+        }
+        return 0;
+    }
+
+
+private:
+    Heuristic heuristic_;
+    //fringe search的迭代加深函数
+    NodePtr iterDeepen(NodePtr n, vector<NodePtr>& later, int& flimit, int& fmin, unordered_map<State, NodePtr>& C)
+    {
+        NodePtr getCha = nullptr;
+        if (n->f > flimit)
+        {
+            fmin = n->f < fmin ? n->f : fmin;
+            later.push_back(n);
+            return nullptr;
+        }
+
+        for (auto& t : targets)
+            if (n->s == t)
+                return n;
+        for (auto& child : n->GetNextNodes())
+        {
+            if (!C.insert(pair<State, NodePtr>(child->s, child)).second && child->g >= C[child->s]->g)
+                continue;
+
+            if (getCha = iterDeepen(child, later, flimit, fmin, C))
+                return getCha;
+        }
+        return nullptr;
+    }
+};
+
 class DijkstraSolver : public Solver {
 public:
-    uLong Solve(State start, State target, vector<State>* path, int* opened,
+    uLong Solve(State start, vector<State>* path, int* opened,
         int* closed) override {
         unordered_map<State, NodePtr> o;
         unordered_set<State> c;
@@ -301,6 +360,7 @@ void main()
     targets = genTargets();
     AStarSolver astar(Inversion);
     FringeSolver fringe(Inversion);
+    FringeSolver2 fringe2(Inversion);
     DijkstraSolver dij;
     byte* s_byte = getStart();
     //打乱初始state
@@ -310,35 +370,46 @@ void main()
     vector<State> path;
     int opened;
     int closed;
-
     uLong s = getBitRep(s_byte, 2 * _size + 1);
 
-    cout << "fringe:" << endl;
-    auto t0 = high_resolution_clock::now();
-    fringe.Solve(s, 0, &path, &opened, &closed);
-    auto t1 = high_resolution_clock::now();
-    auto time_span = chrono::duration_cast<chrono::duration<double>>(t1 - t0);
-    cout << "\tpath size:" << path.size() << endl;
-    cout << "\ttime span:" << time_span.count() * 1000;
-    //animate(path);
+    high_resolution_clock::time_point t0;
+    high_resolution_clock::time_point t1;
+    chrono::duration<double> time_span;
 
-    cout << endl << "dijkstra:" << endl;
+    /*cout << "fringe:" << endl;
+    t0 = high_resolution_clock::now();
+    fringe.Solve(s, &path, &opened, &closed);
+    t1 = high_resolution_clock::now();
+    time_span = chrono::duration_cast<chrono::duration<double>>(t1 - t0);
+    cout << "\tpath size:" << path.size() << endl;
+    cout << "\ttime span:" << time_span.count() * 1000;*/
+
+    cout << "fringe2:" << endl;
     path.clear();
     t0 = high_resolution_clock::now();
-    dij.Solve(s, 0, &path, &opened, &closed);
+    fringe2.Solve(s, &path, &opened, &closed);
     t1 = high_resolution_clock::now();
     time_span = chrono::duration_cast<chrono::duration<double>>(t1 - t0);
     cout << "\tpath size:" << path.size() << endl;
     cout << "\ttime span:" << time_span.count() * 1000 << endl;
+
+    /*cout << "dijkstra:" << endl;
+    path.clear();
+    t0 = high_resolution_clock::now();
+    dij.Solve(s, &path, &opened, &closed);
+    t1 = high_resolution_clock::now();
+    time_span = chrono::duration_cast<chrono::duration<double>>(t1 - t0);
+    cout << "\tpath size:" << path.size() << endl;
+    cout << "\ttime span:" << time_span.count() * 1000 << endl;*/
     
-    cout <<endl << "astar:" << endl;
+    /*cout << "astar:" << endl;
     path.clear();
     t0 = high_resolution_clock::now();
-    astar.Solve(s, 0, &path, &opened, &closed);
+    astar.Solve(s, &path, &opened, &closed);
     t1 = high_resolution_clock::now();
     time_span = chrono::duration_cast<chrono::duration<double>>(t1 - t0);
     cout << "\tpath size:" << path.size() << endl;
-    cout << "\ttime span:" << time_span.count() * 1000 << endl;
+    cout << "\ttime span:" << time_span.count() * 1000 << endl;*/
 
     free(s_byte); s_byte = NULL;
 }
